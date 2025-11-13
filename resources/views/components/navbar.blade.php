@@ -10,8 +10,8 @@
                         </svg>
                         <!-- Title -->
                         <div class="flex flex-col ">
-                            <h1 class="text-xl font-semibold text-white">SIMONIKA</h1>
-                            <span class="text-sm text-gray-200">Sistem Monitoring Kegiatan Badan Pusat Statistik Kota Bekasi </span>
+                            <h1 class="text-xl font-semibold text-white">SIMONICA</h1>
+                            <span class="text-sm text-gray-200">Sistem Monitoring Capaian Kinerja Badan Pusat Statistik Kota Bekasi </span>
                         </div>
 
                         {{-- Navbar --}}
