@@ -37,7 +37,12 @@
             @include('tampilan.daftarpublikasi')
 
             <!-- Grafik Ringkasan -->
-            {{-- @include('tampilan.dashboard') --}}
+            @include('tampilan.dashboard', [
+                'dataGrafikBatang' => $dataGrafikBatang,
+                'dataGrafikRing' => $dataGrafikRing,
+                'dataTahapanSummary' => $dataTahapanSummary,
+                'dataRingSummary' => $dataRingSummary
+            ])
         </div>
     </main>
 </body>
@@ -50,10 +55,10 @@
             <span class="font-semibold text-sm md:text-base">BADAN PUSAT STATISTIK</span>
         </div>
 
-        <!-- Kredit mahasiswa magang -->
+        <!-- Kredit mahasiswa STIS -->
         <div class="mt-4 md:mt-0 text-xs md:text-sm text-center md:text-right">
             <p>© 2025 Badan Pusat Statistik</p>
-            <p class="italic">Kredit by Mahasiswa Magang BPS Kota Bekasi</p>
+            <p class="italic">Kredit by Mahasiswa STIS BPS Kota Bekasi</p>
         </div>
     </div>
 </footer>
@@ -65,23 +70,54 @@
     new Chart(document.getElementById('kinerjaChart'), {
         type: 'bar',
         data: {
-            labels: ['Q1 2024', 'Q2 2024', 'Q3 2024', 'Q4 2024'],
+            // Sumbu X sekarang adalah status, dari variabel baru kita
+            labels: @json($dataGrafikPublikasi['labels']),
             datasets: [
-                { label: 'Rencana', data: [8, 9, 6, 12], backgroundColor: '#00458a' },
-                { label: 'Realisasi', data: [6, 7, 5, 9], backgroundColor: '#2a9d90' }
+                { 
+                    label: 'Jumlah Publikasi', 
+                    data: @json($dataGrafikPublikasi['data']), 
+                    // 3 warna baru untuk 3 status
+                    backgroundColor: [
+                        '#2a9d90', // Selesai
+                        '#f4a261', // Sedang Berlangsung
+                        '#e76f51'  // Belum Berlangsung
+                    ]
+                }
             ]
         },
-        options: { responsive: true, plugins: { legend: { display: false} } }
+        options: { 
+            responsive: true, 
+            plugins: { 
+                legend: { 
+                    display: false // Sembunyikan legenda default
+                } 
+            },
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
     });
 
     // Tahapan Chart
     new Chart(document.getElementById('tahapanChart'), {
         type: 'bar',
         data: {
-            labels: ['Q1', 'Q2', 'Q3', 'Q4'],
+            // Gunakan data yang sama dengan 'Rencana' vs 'Realisasi'
+            // 'Total Tahapan' adalah Rencana, 'Tahapan Selesai' adalah Realisasi
+            labels: @json($dataGrafikBatang['labels']),
             datasets: [
-                { label: 'Total Tahapan', data: [4, 3, 2, 1], backgroundColor: '#00458a' },
-                { label: 'Tahapan Selesai', data: [4, 2, 1, 0], backgroundColor: '#2a9d90' }
+                { 
+                    label: 'Total Tahapan', 
+                    data: @json($dataGrafikBatang['rencana']), 
+                    backgroundColor: '#00458a' 
+                },
+                { 
+                    label: 'Tahapan Selesai', 
+                    data: @json($dataGrafikBatang['realisasi']), 
+                    backgroundColor: '#2a9d90' 
+                }
             ]
         },
         options: { responsive: true, plugins: { legend: { display: false} } }
@@ -91,11 +127,24 @@
     new Chart(document.getElementById('ringChart'), {
         type: 'doughnut',
         data: {
-            labels: ['Publikasi Selesai', 'Tahapan Selesai'],
+            // Labels dan data dari controller 
+            labels: @json($dataGrafikRing['labels']),
             datasets: [
-                { data: [2, 7], backgroundColor: ['#00458a', '#2a9d90'] }
+                { 
+                    data: @json($dataGrafikRing['data']), 
+                    backgroundColor: ['#2a9d90', '#00458a'] 
+                }
             ]
         },
-        options: { responsive: true, cutout: '70%' }
+        options: { 
+            responsive: true, 
+            cutout: '70%',
+            plugins: {
+                // legend: {
+                //     // Sembunyikan legend default dari Chart.js
+                //     display: false 
+                // }
+            }
+        }
     });
 </script>

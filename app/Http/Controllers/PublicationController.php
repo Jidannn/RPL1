@@ -99,102 +99,294 @@ class PublicationController extends Controller
             $publication->listLintas = $listLintas ?? [];
         }
 
+        $chartPlans = [1 => 0, 2 => 0, 3 => 0, 4 => 0];
+        $chartFinals = [1 => 0, 2 => 0, 3 => 0, 4 => 0];
+
+        // Loop sekali lagi untuk menjumlahkan total rencana dan realisasi dari semua publikasi
+        foreach ($publications as $publication) {
+            foreach ([1, 2, 3, 4] as $q) {
+                // Tambahkan jumlah rencana & final dari tiap publikasi ke total
+                $chartPlans[$q] += $publication->rekapPlans[$q] ?? 0;
+                $chartFinals[$q] += $publication->rekapFinals[$q] ?? 0;
+            }
+        }
+        
+        // Data untuk 'tahapanChart' (Grafik Batang)
+        // Kita ubah dari [1 => 10] menjadi [10] agar dibaca sebagai array oleh Chart.js
+        $dataGrafikBatang = [
+            'labels' => ['Triwulan 1', 'Triwulan 2', 'Triwulan 3', 'Triwulan 4'],
+            'rencana' => array_values($chartPlans),
+            'realisasi' => array_values($chartFinals)
+        ];
+        
+        $dataGrafikPublikasi = [
+            'labels' => ['Selesai', 'Berlangsung', 'Belum'],
+            'data' => [
+                $rekapPublikasiTahunan['sudahSelesai'] ?? 0,
+                $rekapPublikasiTahunan['sedangBerlangsung'] ?? 0,
+                $rekapPublikasiTahunan['belumBerlangsung'] ?? 0,
+            ]
+        ];
+
+        // Data untuk ringkasan Donut Chart
+        $dataRingSummary = [
+            'publikasiSelesai' => $rekapPublikasiTahunan['sudahSelesai'] ?? 0,
+            'totalPublikasi' => $rekapPublikasiTahunan['total'] ?? 0,
+            'tahapanSelesai' => array_sum($dataGrafikBatang['realisasi']),
+            'totalTahapan' => array_sum($dataGrafikBatang['rencana']),
+        ];
+
+        // Data untuk 'ringChart' (Grafik Donut)
+        // Kita gunakan data $rekapPublikasiTahunan yang sudah Anda hitung
+        $dataGrafikRing = [
+            'labels' => ['Publikasi Selesai', 'Tahapan Selesai'],
+            'data' => [
+                $dataRingSummary['publikasiSelesai'],  // <-- Data 1
+                $dataRingSummary['tahapanSelesai'], // <-- Data 2
+            ]
+        ];
+        
+        $dataTahapanSummary = [];
+        $rencanaArray = $dataGrafikBatang['rencana'];
+        $realisasiArray = $dataGrafikBatang['realisasi'];
+
+        foreach ([0, 1, 2, 3] as $i) {
+            $q = $i + 1;
+            $r = $rencanaArray[$i];
+            $f = $realisasiArray[$i];
+            $percent = ($r > 0) ? round(($f / $r) * 100) : 0;
+
+            // Tentukan warna berdasarkan persentase
+            if ($percent == 100) {
+                $color = 'text-green-600';
+            } elseif ($percent >= 67) {
+                $color = 'text-yellow-600';
+            } elseif ($percent >= 50) {
+                $color = 'text-orange-600';
+            } else {
+                $color = 'text-red-600';
+            }
+
+            $dataTahapanSummary[] = [
+                'q' => 'Q' . $q,
+                'ratio' => $f . '/' . $r,
+                'percent_text' => $percent . '% selesai',
+                'color' => $color,
+            ];
+        }
+
         return view('tampilan.homeketua', compact(
-            'publications','rekapPublikasiTahunan',
+            'publications',
+            'rekapPublikasiTahunan', 
+            'dataGrafikPublikasi',
+            'dataGrafikBatang', 
+            'dataGrafikRing',
+            'dataTahapanSummary', 
+            'dataRingSummary'
         ));
     }
 
+    // private function getStatistikPerTriwulan($triwulan)
+    // {
+    //     $publications = Publication::with([
+    //         'user',
+    //         'stepsPlans.stepsFinals'
+    //     ])->get();
+
+    //     // $totalPublikasi = $publications->count();
+    //     // $belumBerlangsungPublikasi = 0;
+    //     // $sedangBerlangsungPublikasi = 0;
+    //     // $sudahSelesaiPublikasi = 0;
+
+    //     $totalTahapan = 0;
+    //     $belumBerlangsungTahapan = 0;
+    //     $sedangBerlangsungTahapan = 0;
+    //     $sudahSelesaiTahapan = 0;
+    //     $tertundaTahapan = 0;
+
+    //     foreach ($publications as $publication) {
+    //         $rekapPlans = [1 => 0, 2 => 0, 3 => 0, 4 => 0];
+    //         $rekapFinals = [1 => 0, 2 => 0, 3 => 0, 4 => 0];
+
+    //         // Reset per publikasi
+    //         $belumTahapan = 0;
+    //         $berlangsungTahapan = 0;
+    //         $selesaiTahapan = 0;
+
+    //         foreach ($publication->stepsPlans as $plan) {
+    //             // Belum berlangsung
+    //             if (empty($plan->plan_start_date) && empty($plan->plan_end_date)) {
+    //                 $belumTahapan++;
+    //                 $belumBerlangsungTahapan++;
+    //                 continue;
+    //             }
+
+    //             $q = getQuarter($plan->plan_start_date);
+
+    //             if ($q == $triwulan) {
+    //                 $totalTahapan++;
+    //                 $rekapPlans[$q]++;
+
+    //                 // Sudah selesai
+    //                 if ($plan->stepsFinals) {
+    //                     $selesaiTahapan++;
+    //                     $fq = getQuarter($plan->stepsFinals->actual_started);
+    //                     if ($fq && $fq != $q) {
+    //                         $tertundaTahapan++;
+    //                     } else {
+    //                         $sudahSelesaiTahapan++;
+    //                     }
+    //                 }
+    //                 // Sedang berlangsung
+    //                 else {
+    //                     $berlangsungTahapan++;
+    //                     $sedangBerlangsungTahapan++;
+    //                 }
+    //             }
+    //         }
+
+    //         // Hitung progres publikasi di triwulan ini
+    //         // $totalPlans = array_sum($rekapPlans);
+    //         // $totalFinals = array_sum($rekapFinals);
+    //         // $progressTriwulan = ($totalPlans > 0) ? ($totalFinals / $totalPlans) * 100 : 0;
+
+    //         // Status publikasi
+    //         // if ($selesaiTahapan > 0 && $berlangsungTahapan == 0 && $belumTahapan == 0) {
+    //         //     $sudahSelesaiPublikasi++;
+    //         // } elseif ($berlangsungTahapan > 0) {
+    //         //     $sedangBerlangsungPublikasi++;
+    //         // } elseif ($belumTahapan > 0 && $berlangsungTahapan == 0 && $selesaiTahapan == 0) {
+    //         //     $belumBerlangsungPublikasi++;
+    //         // }
+    //     }
+
+    //     $persentaseRealisasi = ($totalTahapan > 0) 
+    //         ? round(($sudahSelesaiTahapan / $totalTahapan) * 100) 
+    //         : 0;
+
+    //     return response()->json([
+    //         // 'publikasi' => [
+    //         //     'total' => $totalPublikasi,
+    //         //     'belumBerlangsung' => $belumBerlangsungPublikasi,
+    //         //     'sedangBerlangsung' => $sedangBerlangsungPublikasi,
+    //         //     'sudahSelesai' => $sudahSelesaiPublikasi,
+    //         // ],
+    //         'tahapan' => [
+    //             'total' => $totalTahapan,
+    //             'belumBerlangsung' => $belumBerlangsungTahapan,
+    //             'sedangBerlangsung' => $sedangBerlangsungTahapan,
+    //             'sudahSelesai' => $sudahSelesaiTahapan,
+    //             'tertunda' => $tertundaTahapan,
+    //             'persentaseRealisasi' => $persentaseRealisasi,
+    //         ]
+    //     ]);
+    // }
+
     private function getStatistikPerTriwulan($triwulan)
     {
+        // Konversi triwulan yang dipilih menjadi integer
+        $selectedTriwulan = (int)$triwulan;
+
         $publications = Publication::with([
             'user',
-            'stepsPlans.stepsFinals.struggles'
+            'stepsPlans.stepsFinals'
         ])->get();
 
-        // $totalPublikasi = $publications->count();
-        // $belumBerlangsungPublikasi = 0;
-        // $sedangBerlangsungPublikasi = 0;
-        // $sudahSelesaiPublikasi = 0;
-
-        $totalTahapan = 0;
-        $belumBerlangsungTahapan = 0;
-        $sedangBerlangsungTahapan = 0;
-        $sudahSelesaiTahapan = 0;
-        $tertundaTahapan = 0;
+        // Inisialisasi penghitung PUBLIKASI
+        $totalPublikasi = $publications->count();
+        $sudahSelesaiPublikasi = 0;
+        $sedangBerlangsungPublikasi = 0;
+        
+        // Inisialisasi penghitung TAHAPAN (Kumulatif)
+        $totalTahapanKumulatif = 0;
+        $selesaiTahapanKumulatif = 0;
+        $sedangTahapanKumulatif = 0;
+        $tertundaTahapanKumulatif = 0; // (Tetap hitung untuk data)
+        $belumBerlangsungTahapanKumulatif = 0;
 
         foreach ($publications as $publication) {
-            $rekapPlans = [1 => 0, 2 => 0, 3 => 0, 4 => 0];
-            $rekapFinals = [1 => 0, 2 => 0, 3 => 0, 4 => 0];
 
-            // Reset per publikasi
-            $belumTahapan = 0;
-            $berlangsungTahapan = 0;
-            $selesaiTahapan = 0;
+            // --- Status Publikasi (Kumulatif) ---
+            $plansInScope = 0;
+            $completedPlansInScope = 0;
+            $anyPlanStartedInScope = false;
 
             foreach ($publication->stepsPlans as $plan) {
-                // Belum berlangsung
-                if (empty($plan->plan_start_date) && empty($plan->plan_end_date)) {
-                    $belumTahapan++;
-                    $belumBerlangsungTahapan++;
+
+                if (empty($plan->plan_start_date)) {
+                    // Jika tahapan tidak punya tanggal, anggap 'belum berlangsung'
+                    $belumBerlangsungTahapanKumulatif++;
                     continue;
                 }
 
+                // Dapatkan triwulan rencana
                 $q = getQuarter($plan->plan_start_date);
 
-                if ($q == $triwulan) {
-                    $totalTahapan++;
-                    $rekapPlans[$q]++;
+                // LOGIKA KUNCI: Cek apakah rencana ini "masuk dalam cakupan"
+                //    (dimulai PADA atau SEBELUM triwulan yang dipilih)
+                if ($q && $q <= $selectedTriwulan) {
+                    // --- Update Status TAHAPAN ---
+                    $totalTahapanKumulatif++;
+                    $anyPlanStartedInScope = true; // Tandai bahwa publikasi ini sudah mulai
 
-                    // Sudah selesai
                     if ($plan->stepsFinals) {
-                        $selesaiTahapan++;
+                        // Cek triwulan realisasi
                         $fq = getQuarter($plan->stepsFinals->actual_started);
-                        if ($fq && $fq != $q) {
-                            $tertundaTahapan++;
+                        
+                        // Jika selesai PADA atau SEBELUM triwulan yang dipilih
+                        if ($fq && $fq <= $selectedTriwulan) {
+                            $selesaiTahapanKumulatif++;
+                            $completedPlansInScope++;
+                            if ($fq > $q) {
+                                $tertundaTahapanKumulatif++;
+                            }
                         } else {
-                            $sudahSelesaiTahapan++;
+                            // Selesai tapi NANTI (misal: pilih Q1, selesai di Q2)
+                            // Maka di Q1 statusnya masih 'sedang berlangsung'
+                            $sedangTahapanKumulatif++;
                         }
+                    } else {
+                        // Rencana sudah mulai tapi belum selesai
+                        $sedangTahapanKumulatif++;
                     }
-                    // Sedang berlangsung
-                    else {
-                        $berlangsungTahapan++;
-                        $sedangBerlangsungTahapan++;
-                    }
+
+                    // --- Update Status PUBLIKASI ---
+                    $plansInScope++;
+                }
+            } // end loop plans
+
+            // Tentukan status PUBLIKASI ini
+            if ($anyPlanStartedInScope) {
+                // Jika semua rencana dalam cakupan sudah selesai
+                if ($plansInScope > 0 && $completedPlansInScope === $plansInScope) {
+                    $sudahSelesaiPublikasi++;
+                } else {
+                    // Jika ada 1 saja rencana yang mulai, tapi belum semua selesai
+                    $sedangBerlangsungPublikasi++;
                 }
             }
+        } // end loop publications
 
-            // Hitung progres publikasi di triwulan ini
-            // $totalPlans = array_sum($rekapPlans);
-            // $totalFinals = array_sum($rekapFinals);
-            // $progressTriwulan = ($totalPlans > 0) ? ($totalFinals / $totalPlans) * 100 : 0;
+        // Hitung 'Belum Berlangsung' sebagai sisanya
+        $belumBerlangsungPublikasi = $totalPublikasi - $sudahSelesaiPublikasi - $sedangBerlangsungPublikasi;
 
-            // Status publikasi
-            // if ($selesaiTahapan > 0 && $berlangsungTahapan == 0 && $belumTahapan == 0) {
-            //     $sudahSelesaiPublikasi++;
-            // } elseif ($berlangsungTahapan > 0) {
-            //     $sedangBerlangsungPublikasi++;
-            // } elseif ($belumTahapan > 0 && $berlangsungTahapan == 0 && $selesaiTahapan == 0) {
-            //     $belumBerlangsungPublikasi++;
-            // }
-        }
-
-        $persentaseRealisasi = ($totalTahapan > 0) 
-            ? round(($sudahSelesaiTahapan / $totalTahapan) * 100) 
+        $persentaseRealisasi = ($totalTahapanKumulatif > 0) 
+            ? round(($selesaiTahapanKumulatif / $totalTahapanKumulatif) * 100) 
             : 0;
 
         return response()->json([
-            // 'publikasi' => [
-            //     'total' => $totalPublikasi,
-            //     'belumBerlangsung' => $belumBerlangsungPublikasi,
-            //     'sedangBerlangsung' => $sedangBerlangsungPublikasi,
-            //     'sudahSelesai' => $sudahSelesaiPublikasi,
-            // ],
+            'publikasi' => [
+                'total' => $totalPublikasi,
+                'belumBerlangsung' => $belumBerlangsungPublikasi,
+                'sedangBerlangsung' => $sedangBerlangsungPublikasi,
+                'sudahSelesai' => $sudahSelesaiPublikasi,
+            ],
             'tahapan' => [
-                'total' => $totalTahapan,
-                'belumBerlangsung' => $belumBerlangsungTahapan,
-                'sedangBerlangsung' => $sedangBerlangsungTahapan,
-                'sudahSelesai' => $sudahSelesaiTahapan,
-                'tertunda' => $tertundaTahapan,
+                'total' => $totalTahapanKumulatif,
+                'belumBerlangsung' => $belumBerlangsungTahapanKumulatif, // (Opsional)
+                'sedangBerlangsung' => $sedangTahapanKumulatif,
+                'sudahSelesai' => $selesaiTahapanKumulatif,
+                'tertunda' => $tertundaTahapanKumulatif, // (Opsional)
                 'persentaseRealisasi' => $persentaseRealisasi,
             ]
         ]);
