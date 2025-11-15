@@ -1,6 +1,6 @@
 {{-- statistik/rekapitulasi-publikasi.blade.php --}}
 <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-    <!-- Sedang Berlangsung -->
+    <!-- Belum Berlangsung -->
     <div class="relative p-4 border rounded text-center">
         <div class="absolute top-2 right-2 text-blue-500">
             <svg xmlns="http://www.w3.org/2000/svg" class="size-4" fill="currentColor" viewBox="0 0 16 16">
@@ -8,7 +8,7 @@
             </svg>
         </div>
         <p class="text-sm text-gray-500">Belum Berlangsung</p>
-        <p class="text-2xl font-bold"> {{ $rekapPublikasiTahunan['belumBerlangsung'] }}</p>
+        <p class="text-2xl font-bold" x-text="data.publikasi.belumBerlangsung"></p>
         <p class="text-xs text-gray-400">Publikasi belum berjalan</p>
     </div>
 
@@ -20,7 +20,7 @@
             </svg>
         </div>
         <p class="text-sm text-gray-500">Sedang Berlangsung</p>
-        <p class="text-2xl font-bold"> {{ $rekapPublikasiTahunan['sedangBerlangsung'] }}</p>
+        <p class="text-2xl font-bold" x-text="data.publikasi.sedangBerlangsung"></p>
         <p class="text-xs text-gray-400">Publikasi dalam proses</p>
     </div>
 
@@ -32,7 +32,7 @@
             </svg>
         </div>
         <p class="text-sm text-gray-500">Sudah Selesai</p>
-        <p class="text-2xl font-bold">{{ $rekapPublikasiTahunan['sudahSelesai'] }}</p>
+        <p class="text-2xl font-bold" x-text="data.publikasi.sudahSelesai"></p>
         <p class="text-xs text-gray-400">Publikasi telah selesai</p>
     </div>
 
@@ -44,7 +44,7 @@
             </svg>
         </div>
         <p class="text-sm text-gray-500">Total Publikasi</p>
-        <p class="text-2xl font-bold">{{ $rekapPublikasiTahunan['total'] }}</p>
+        <p class="text-2xl font-bold" x-text="data.publikasi.total"></p>
         <p class="text-xs text-gray-400">Total Tahunan</p>
     </div>
 </div>
