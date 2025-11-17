@@ -174,7 +174,7 @@
 </body>
 
 <script>
-// Store chart instances globally untuk bisa di-update
+    
 let kinerjaChart, tahapanChart, ringChart, timChart;
 
 // Data original dari backend
@@ -183,14 +183,13 @@ const originalData = {
     tahapan: @json($dataGrafikBatang),
     ring: @json($dataGrafikRing),
     tim: @json($dataGrafikPerTim),
-    publications: @json($publications) // Semua data publikasi
+    publications: @json($publications) 
 };
 
 // Fungsi untuk filter data
 function filterData(filterTim, filterTriwulan) {
     let filteredPublications = originalData.publications;
     
-    // Filter by tim
     if (filterTim !== 'semua') {
         filteredPublications = filteredPublications.filter(pub => 
             pub.publication_pic === filterTim
@@ -207,7 +206,6 @@ function filterData(filterTim, filterTriwulan) {
     let selesai = 0, berlangsung = 0, belum = 0;
     
     filteredPublications.forEach(pub => {
-        // Hitung status
         const totalPlans = Object.values(pub.rekapPlans || {}).reduce((a,b) => a+b, 0);
         const totalFinals = Object.values(pub.rekapFinals || {}).reduce((a,b) => a+b, 0);
         
@@ -219,9 +217,7 @@ function filterData(filterTim, filterTriwulan) {
             berlangsung++;
         }
         
-        // Aggregate per triwulan
         [1, 2, 3, 4].forEach(q => {
-            // Skip jika filter triwulan aktif dan bukan triwulan yang dipilih
             if (filterTriwulan !== 'semua' && q !== parseInt(filterTriwulan)) {
                 return;
             }
@@ -232,7 +228,6 @@ function filterData(filterTim, filterTriwulan) {
             chartTerlambat[idx] += pub.terlambat?.[q] || 0;
         });
         
-        // Aggregate per tim
         const pic = pub.publication_pic;
         if (!chartPerTim[pic]) {
             chartPerTim[pic] = { plans: 0, tepat_waktu: 0, terlambat: 0 };
@@ -268,19 +263,16 @@ function filterData(filterTim, filterTriwulan) {
 function updateAllCharts(filterTim = 'semua', filterTriwulan = 'semua') {
     const filtered = filterData(filterTim, filterTriwulan);
     
-    // Update Chart 1: Status Publikasi
     kinerjaChart.data.labels = filtered.publikasi.labels;
     kinerjaChart.data.datasets[0].data = filtered.publikasi.data;
     kinerjaChart.update();
     
-    // Update Chart 2: Tahapan
     tahapanChart.data.labels = filtered.tahapan.labels;
     tahapanChart.data.datasets[0].data = filtered.tahapan.rencana;
     tahapanChart.data.datasets[1].data = filtered.tahapan.tepat_waktu;
     tahapanChart.data.datasets[2].data = filtered.tahapan.terlambat;
     tahapanChart.update();
     
-    // Update Chart 4: Per Tim (hanya jika admin)
     if (timChart) {
         timChart.data.labels = filtered.tim.labels;
         timChart.data.datasets[0].data = filtered.tim.plans;

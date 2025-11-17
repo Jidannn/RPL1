@@ -19,7 +19,14 @@ class AuthController extends Controller
 
         if (Auth::attempt($credentials, $request->filled('remember'))) {
             $request->session()->regenerate();
-            return redirect()->intended('/');
+            $user = Auth::user();
+
+            // Membedakan tampilan admin
+            // if ($user->role === 'admin') {
+            //     return redirect()->route('adminpage');
+            // }
+
+            return redirect()->route('daftarpublikasi');
         }
 
         return back()->withErrors([

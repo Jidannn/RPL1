@@ -53,7 +53,7 @@
             <p class="text-sm text-gray-500 mt-1">Rekapitulasi data berdasarkan triwulan dan jenis tampilan</p>
         </div>
         
-        <!-- Dropdown Triwulan dengan styling lebih baik -->
+        <!-- Dropdown Triwulan -->
         <div class="flex items-center gap-3 mt-4 md:mt-0">
             <label for="triwulan" class="text-sm font-medium text-gray-700 flex items-center gap-2">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5 text-blue-600">
