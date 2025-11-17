@@ -42,8 +42,7 @@ class AuthController extends Controller
         return view('auth.change-password');
     }
 
-    public function updatePassword(Request $request)
-{
+    public function updatePassword(Request $request) {
     $request->validate([
         'current_password'      => 'required',
         'password'              => 'required|min:6|confirmed',
@@ -51,12 +50,10 @@ class AuthController extends Controller
 
     $user = auth()->user();
 
-    // cek password lama
     if (!Hash::check($request->current_password, $user->password)) {
         return back()->withErrors(['current_password' => 'Password lama tidak sesuai.']);
     }
 
-    // update password
     $user->update([
         'password' => Hash::make($request->password),
     ]);

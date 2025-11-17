@@ -19,7 +19,9 @@ class StepsPlan extends Model
         'plan_end_date',
         'plan_desc',
         'plan_doc',
-        'publication_id'
+        'publication_id',
+        'plan_quarter',
+        'slug_plan',
     ];
 
     protected $casts = [
@@ -30,7 +32,7 @@ class StepsPlan extends Model
     // Relasi: Steps Plan dimiliki oleh satu Publication
     public function publication()
     {
-        return $this->belongsTo(Publication::class, 'publication_id', 'publication_id');
+        return $this->belongsTo(Publication::class, 'publication_id');
     }
 
     // Relasi: Steps Plan memiliki satu Steps Finals

@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 use App\Models\User;
+use App\Models\StepsPlan;
+use App\Models\PublicationFile;
 
 class Publication extends Model
 {
@@ -13,7 +15,6 @@ class Publication extends Model
 
     protected $table = 'publications';
     protected $primaryKey = 'publication_id';
-
     public $incrementing = true;
 
     protected $keyType = 'string';
@@ -24,8 +25,8 @@ class Publication extends Model
         'publication_pic',
         'fk_user_id',
         'slug_publication',
+        'is_monthly',
     ];
-
     
     // Generate UUID otomatis saat creating (jika belum ada)
     protected static function boot()
@@ -45,15 +46,22 @@ class Publication extends Model
         return 'slug_publication';
     }
 
-    // Relasi: Publication dimiliki oleh satu User
+    // Publication dimiliki oleh satu User
     public function user()
     {
-        return $this->belongsTo(User::class, 'user_id', 'user_id');
+        return $this->belongsTo(User::class, 'fk_user_id', 'id');
     }
 
-    // Relasi: Publication memiliki banyak Steps Plans
+    // Publication memiliki banyak Steps Plans
     public function stepsPlans()
     {
         return $this->hasMany(StepsPlan::class, 'publication_id', 'publication_id');
+    }
+
+    // Publication memiliki banyak Files
+    public function files()
+    {
+        return $this->hasMany(PublicationFile::class, 'publication_id', 'publication_id')
+                    ->orderBy('created_at', 'desc'); 
     }
 }
