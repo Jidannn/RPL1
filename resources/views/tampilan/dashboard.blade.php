@@ -211,28 +211,23 @@
 
 <style>
 @media print {
-    /* Hide elements yang tidak perlu di print */
     nav, header, footer, .print\\:hidden {
         display: none !important;
     }
     
-    /* Atur ukuran halaman */
     @page {
         size: A4 landscape;
         margin: 1cm;
     }
     
-    /* Pastikan chart tidak terpotong */
     .page-break {
         page-break-after: always;
     }
     
-    /* Ukuran font lebih kecil untuk print */
     body {
         font-size: 10pt;
     }
     
-    /* Chart containers */
     canvas {
         max-width: 100% !important;
         height: auto !important;
@@ -241,6 +236,7 @@
 </style>
 
 <script>
+    
 // Fungsi untuk download chart sebagai image
 function downloadChart(chartId, filename) {
     const canvas = document.getElementById(chartId);

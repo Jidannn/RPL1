@@ -125,7 +125,7 @@
                                 @endphp
 
                                 @foreach($teams as $team)
-                                    {{-- ✅ Ketua tim & operator hanya bisa pilih tim sendiri --}}
+                                    {{-- Ketua tim & operator hanya bisa pilih tim sendiri --}}
                                     @if($user && in_array($user->role, ['ketua_tim', 'operator']))
                                         @if($user->team === $team)
                                             <option value="{{ $team }}" selected>Tim {{ $team }}</option>
@@ -146,7 +146,6 @@
                             selectAll: true 
                         }">
                             
-                            <!-- Checkbox untuk aktifkan mode bulanan -->
                             <div class="mb-4">
                                 <label class="flex items-center cursor-pointer">
                                     <input type="checkbox" 
@@ -164,7 +163,6 @@
                                 </p>
                             </div>
 
-                            <!-- Pilihan Bulan (muncul jika isMonthly = true) -->
                             <div x-show="isMonthly" 
                                 x-transition
                                 class="mb-3 border rounded-lg p-3 bg-gray-50">
@@ -261,19 +259,13 @@
                     </tr>
                 </thead>
                 <tbody id="publication-table-body">
-                    <!-- Isi Tabel -->
                     @if($publications->count())
                         @foreach($publications as $index => $publication)
                         <tr>
-                            <!-- No -->
                             <td class="px-4 py-4 align-top">{{ $index + 1 }}</td>
-                            <!-- Nama Publikasi -->
                             <td class="px-4 py-4 align-top font-semibold text-gray-700">{{ $publication->publication_report }}</td>
-                            <!-- Nama Kegiatan -->
                             <td class="px-4 py-4 align-top font-semibold text-gray-700">{{ $publication->publication_name }}</td>
-                            <!-- PIC -->
                             <td class="px-4 py-4 align-top font-semibold text-gray-700">{{ $publication->publication_pic }}</td>
-                            <!-- Tahapan -->
                             <td class="px-4 py-4 align-top">
                                 <div class="text-sm font-medium text-gray-700"> {{ array_sum($publication->rekapFinals) }}/{{ array_sum($publication->rekapPlans) }} Tahapan</div>
                                 <div class="flex items-center gap-2 mt-1">
@@ -285,12 +277,10 @@
                             <td class="px-4 py-4 align-top text-center">
                                 @if($publication->files->count() > 0)
                                     <div class="relative group inline-block">
-                                        <!-- Badge jumlah file -->
                                         <div class="px-3 py-1 rounded-full bg-purple-600 text-white inline-block cursor-pointer hover:bg-purple-700 transition">
                                             📎 {{ $publication->files->count() }} File
                                         </div>
                                         
-                                        <!-- Tooltip daftar file (muncul saat hover) -->
                                         <div class="absolute left-1/2 -translate-x-1/2 top-full mt-2 hidden group-hover:block 
                                                     bg-white border border-gray-200 shadow-xl rounded-lg p-3 w-72 text-sm 
                                                     text-gray-700 z-50">
@@ -325,7 +315,6 @@
                                     <div class="px-3 py-1 rounded-full bg-blue-900 text-white inline-block cursor-pointer hover:bg-blue-800 transition">
                                         {{ $publication->rekapPlans[1] }} Rencana
                                     </div>
-                                    <!-- Tooltip muncul saat hover -->
                                     <div class="absolute left-1/2 -translate-x-1/2 top-full mt-2 hidden group-hover:block bg-white border border-gray-200 shadow-lg rounded-lg p-2 w-64 text-sm text-gray-700 z-50">
                                         <p class="font-semibold text-gray-800 mb-1">Daftar Rencana:</p>
                                         <ul class="list-disc pl-4 space-y-1 max-h-40 overflow-y-auto">
@@ -350,7 +339,6 @@
                                     <div class="px-3 py-1 rounded-full bg-blue-900 text-white inline-block cursor-pointer hover:bg-blue-800 transition">
                                         {{ $publication->rekapPlans[2] }} Rencana
                                     </div>
-                                    <!-- Tooltip muncul saat hover -->
                                     <div class="absolute left-1/2 -translate-x-1/2 top-full mt-2 hidden group-hover:block bg-white border border-gray-200 shadow-lg rounded-lg p-2 w-64 text-sm text-gray-700 z-50">
                                         <p class="font-semibold text-gray-800 mb-1">Daftar Rencana:</p>
                                         <ul class="list-disc pl-4 space-y-1 max-h-40 overflow-y-auto">
@@ -375,7 +363,6 @@
                                     <div class="px-3 py-1 rounded-full bg-blue-900 text-white inline-block cursor-pointer hover:bg-blue-800 transition">
                                         {{ $publication->rekapPlans[3] }} Rencana
                                     </div>
-                                    <!-- Tooltip muncul saat hover -->
                                     <div class="absolute left-1/2 -translate-x-1/2 top-full mt-2 hidden group-hover:block bg-white border border-gray-200 shadow-lg rounded-lg p-2 w-64 text-sm text-gray-700 z-50">
                                         <p class="font-semibold text-gray-800 mb-1">Daftar Rencana:</p>
                                         <ul class="list-disc pl-4 space-y-1 max-h-40 overflow-y-auto">
@@ -400,7 +387,6 @@
                                     <div class="px-3 py-1 rounded-full bg-blue-900 text-white inline-block cursor-pointer hover:bg-blue-800 transition">
                                         {{ $publication->rekapPlans[4] }} Rencana
                                     </div>
-                                    <!-- Tooltip muncul saat hover -->
                                     <div class="absolute left-1/2 -translate-x-1/2 top-full mt-2 hidden group-hover:block bg-white border border-gray-200 shadow-lg rounded-lg p-2 w-64 text-sm text-gray-700 z-50">
                                         <p class="font-semibold text-gray-800 mb-1">Daftar Rencana:</p>
                                         <ul class="list-disc pl-4 space-y-1 max-h-40 overflow-y-auto">
@@ -780,18 +766,16 @@
 </div>
 
 <script>
-// ✅ FIXED: Fungsi openEditModal yang benar
+    
+// Fungsi openEditModal yang benar
 function openEditModal(slug, report, name, pic) {
-    // 1. Tampilkan modal
     let modal = document.getElementById('editModal');
     modal.classList.remove('hidden');
     modal.classList.add('flex');
 
-    // 2. Update form action dengan slug yang benar
     let form = document.getElementById('editForm');
     form.action = `/publications/${slug}`;
     
-    // 3. Pastikan method spoofing ada
     let methodInput = form.querySelector('input[name="_method"]');
     if (!methodInput) {
         methodInput = document.createElement('input');
@@ -803,46 +787,36 @@ function openEditModal(slug, report, name, pic) {
         methodInput.value = 'PUT';
     }
 
-    // 4. Set nilai field biasa (non-Alpine)
     document.getElementById('edit_name').value = name;
     document.getElementById('edit_pic').value = pic;
 
-    // 5. ✅ FIXED: Set Alpine.js data dengan cara yang benar
-    // Tunggu sampai Alpine ready
     if (window.Alpine) {
-        // Cari elemen yang memiliki x-data
         const alpineElement = modal.querySelector('[x-data]');
         
         if (alpineElement && alpineElement._x_dataStack) {
-            // Akses Alpine component dengan cara yang benar
             const alpineData = alpineElement._x_dataStack[0];
             
-            // Set values
             alpineData.editReport = report;
             alpineData.editOther = (report === 'other');
             alpineData.editReportOther = '';
             
-            // Trigger change detection
             if (window.Alpine.effect) {
                 window.Alpine.effect(() => {
                     alpineData.editReport;
                 });
             }
         } else {
-            // Fallback: Set manual tanpa Alpine
             console.warn('Alpine component not found, using fallback');
             const select = document.getElementById('edit_publication_report');
             if (select) {
                 select.value = report;
                 
-                // Trigger change event untuk menampilkan "other" input
                 const event = new Event('change', { bubbles: true });
                 select.dispatchEvent(event);
             }
         }
     } else {
         console.error('Alpine.js not loaded');
-        // Fallback tanpa Alpine
         const select = document.getElementById('edit_publication_report');
         if (select) {
             select.value = report;
@@ -856,7 +830,7 @@ function closeEditModal() {
     modal.classList.remove('flex');
 }
 
-// ✅ Search functionality
+// Search functionality
 document.getElementById('search').addEventListener('keyup', function() {
     let query = this.value;
     let tbody = document.getElementById('publication-table-body');
@@ -911,7 +885,7 @@ document.getElementById('search').addEventListener('keyup', function() {
         });
 });
 
-// ✅ Helper function untuk generate kolom triwulan (Rencana + Realisasi)
+// Helper function untuk generate kolom triwulan
 function generateQuarterColumns(item) {
     let html = '';
     
@@ -988,9 +962,8 @@ function generateQuarterColumns(item) {
     return html;
 }
 
-// ✅ Helper function untuk generate tombol aksi
+// Helper function untuk generate tombol aksi
 function generateActionButtons(item) {
-    // Escape string untuk JavaScript
     const escapeQuotes = (str) => (str || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
     
     let html = `
@@ -1004,7 +977,6 @@ function generateActionButtons(item) {
         </a>
     `;
 
-    // Cek role user (dari global variable)
     if (window.userRole === 'ketua_tim' || window.userRole === 'admin') {
         html += `
             <button onclick="openEditModal('${item.slug_publication}', '${escapeQuotes(item.publication_report)}', '${escapeQuotes(item.publication_name)}', '${escapeQuotes(item.publication_pic)}')"
@@ -1027,7 +999,7 @@ function generateActionButtons(item) {
     return html;
 }
 
-// ✅ Delete function
+// Delete function
 function deletePublication(slug_publication) {
     if (!confirm("Yakin ingin menghapus publikasi ini?")) return;
 
@@ -1090,7 +1062,6 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     }
 
-    // Validasi PIC untuk ketua tim & operator
     const picSelect = document.querySelector('select[name="publication_pic"]');
     const form = picSelect?.closest('form');
     
@@ -1160,7 +1131,7 @@ function generatePublicationColumn(item) {
     }
 }
 
-// UPDATE fetch search - tambahkan kolom publikasi di tbody.innerHTML
+// UPDATE fetch search 
 document.getElementById('search').addEventListener('keyup', function() {
     let query = this.value;
     let tbody = document.getElementById('publication-table-body');
@@ -1221,7 +1192,6 @@ document.getElementById('search').addEventListener('keyup', function() {
 @if($errors->any() || session('error'))
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // Trigger Alpine.js untuk open modal
         const modalTrigger = document.querySelector('[x-data] button');
         if (modalTrigger) {
             modalTrigger.click();
