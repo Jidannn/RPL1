@@ -8,76 +8,80 @@ use Illuminate\Support\Facades\Auth;
 use App\Models\User;
 use App\Models\Publication;
 use App\Models\StepsPlan;
-
+use Illuminate\Support\Str;
+use App\Models\PublicationFile;
+use Illuminate\Support\Facades\Storage;
 
 class PublicationController extends Controller
 {
     public function index(Request $request)
     {
-        // Cek apakah ini request AJAX untuk data per triwulan
         if ($request->ajax() && $request->has('triwulan')) {
             return $this->getStatistikPerTriwulan($request->input('triwulan'));
         }
 
-        // Tambahkan rekap publikasi tahunan
-        $rekapPublikasiTahunan = $this->getStatistikPublikasiTahunan();
-
-        // Request normal (bukan AJAX) - tampilkan view dengan data kumulatif
-        $publications = Publication::with([
+        $query = Publication::with([
             'user',
-            'stepsPlans.stepsFinals.struggles'
-        ])->get();
+            'stepsPlans.stepsFinals.struggles',
+            'files'
+        ]);
+
+        $user = auth()->user();
+    
+        if ($user && in_array($user->role, ['ketua_tim', 'operator'])) {
+            $query->where('publication_pic', $user->team);
+        }
+
+        $publications = $query->get();
+
+        $rekapPublikasiTahunan = $this->getStatistikPublikasiTahunan($user);
         
-        // looping dan perhitungan per publikasi
         foreach ($publications as $publication) {
-            // inisialisasi jumlah per triwulan
             $rekapPlans = [1 => 0, 2 => 0, 3 => 0, 4 => 0];
             $rekapFinals = [1 => 0, 2 => 0, 3 => 0, 4 => 0];
-            // $lintasTriwulan = 0;
             $lintasTriwulan = [1 => 0, 2 => 0, 3 => 0, 4 => 0];
-            $progressKumulatif = 0;
-
-            // 🟩 Tambahkan inisialisasi array list kosong per publikasi
+            $tepatWaktu = [1 => 0, 2 => 0, 3 => 0, 4 => 0]; 
+            $terlambat = [1 => 0, 2 => 0, 3 => 0, 4 => 0];  
+            
             $listPlans = [1 => [], 2 => [], 3 => [], 4 => []];
             $listFinals = [1 => [], 2 => [], 3 => [], 4 => []];
             $listLintas = [1 => [], 2 => [], 3 => [], 4 => []];
 
-            // Looping di setiap tahapan 
             foreach ($publication->stepsPlans as $plan) {
-                
-                // Tentukan triwulan dari rencana dan realisasi
                 $q = getQuarter($plan->plan_start_date);
+                
                 if ($q) {
                     $rekapPlans[$q]++;
-                    $listPlans[$q][] = $plan->plan_name; // Simpan nama tahapan untuk referensi
+                    $listPlans[$q][] = $plan->plan_name;
                 }
                 
                 if ($plan->stepsFinals) {
-                    // Tentukan triwulan realisasi
                     $fq = getQuarter($plan->stepsFinals->actual_started);
-                    if ($fq) {
-                        $rekapFinals[$fq]++;
-                        $listFinals[$fq][] = $plan->plan_name; // Simpan nama tahapan untuk referensi
-                    }
+                    if ($q) {
+                        $rekapFinals[$q]++;
+                        $listFinals[$q][] = $plan->plan_name;
 
-                    // Cek Lintas Triwulan
-                    if ($fq && $q && $fq != $q) {
-                        $lintasTriwulan[$fq]++;
-                        $listLintas[$fq][] = [
-                            'plan_name' => $plan->plan_name,
-                            'from_quarter' => $q,
-                            'to_quarter' => $fq
-                        ];
+                        if ($fq && $fq <= $q) {
+                            $tepatWaktu[$q]++;
+                        } else {
+                            $terlambat[$q]++;
+                            $lintasTriwulan[$q]++;
+                            
+                            $listLintas[$q][] = [
+                                'plan_name' => $plan->plan_name,
+                                'from_quarter' => $q,
+                                'to_quarter' => $fq,
+                                'delay' => getDelayQuarters($q, $fq)
+                            ];
+                        }
                     }
                 }        
             }
 
-            // --- PENGHITUNGAN PROGRESS KUMULATIF PUBLIKASI ---
             $totalPlans = array_sum($rekapPlans);
             $totalFinals = array_sum($rekapFinals);
             $progressKumulatif = ($totalPlans > 0) ? ($totalFinals / $totalPlans) * 100 : 0;
 
-            // Hitung progress per triwulan
             $progressTriwulan = [];
             foreach ([1, 2, 3, 4] as $q) {
                 if ($rekapPlans[$q] > 0) {
@@ -87,36 +91,54 @@ class PublicationController extends Controller
                 }
             }
 
-            // inject hasil rekap ke model publikasi
             $publication->rekapPlans = $rekapPlans;
             $publication->rekapFinals = $rekapFinals;
             $publication->lintasTriwulan = $lintasTriwulan;
+            $publication->tepatWaktu = $tepatWaktu;
+            $publication->terlambat = $terlambat;
             $publication->progressKumulatif = $progressKumulatif;
             $publication->progressTriwulan = $progressTriwulan;
-            // hover
-            $publication->listPlans = $listPlans ?? [];
-            $publication->listFinals = $listFinals ?? [];
-            $publication->listLintas = $listLintas ?? [];
+            $publication->listPlans = $listPlans;
+            $publication->listFinals = $listFinals;
+            $publication->listLintas = $listLintas;
         }
 
         $chartPlans = [1 => 0, 2 => 0, 3 => 0, 4 => 0];
         $chartFinals = [1 => 0, 2 => 0, 3 => 0, 4 => 0];
+        $chartTepatWaktu = [1 => 0, 2 => 0, 3 => 0, 4 => 0]; 
+        $chartTerlambat = [1 => 0, 2 => 0, 3 => 0, 4 => 0]; 
+        $chartPerTim = [];
 
-        // Loop sekali lagi untuk menjumlahkan total rencana dan realisasi dari semua publikasi
         foreach ($publications as $publication) {
             foreach ([1, 2, 3, 4] as $q) {
-                // Tambahkan jumlah rencana & final dari tiap publikasi ke total
                 $chartPlans[$q] += $publication->rekapPlans[$q] ?? 0;
                 $chartFinals[$q] += $publication->rekapFinals[$q] ?? 0;
+                $chartTepatWaktu[$q] += $publication->tepatWaktu[$q] ?? 0;
+                $chartTerlambat[$q] += $publication->terlambat[$q] ?? 0;
             }
+            
+            $pic = $publication->publication_pic;
+            if (!isset($chartPerTim[$pic])) {
+                $chartPerTim[$pic] = [
+                    'plans' => 0,
+                    'finals' => 0,
+                    'tepat_waktu' => 0,
+                    'terlambat' => 0
+                ];
+            }
+            
+            $chartPerTim[$pic]['plans'] += array_sum($publication->rekapPlans);
+            $chartPerTim[$pic]['finals'] += array_sum($publication->rekapFinals);
+            $chartPerTim[$pic]['tepat_waktu'] += array_sum($publication->tepatWaktu);
+            $chartPerTim[$pic]['terlambat'] += array_sum($publication->terlambat);
         }
         
-        // Data untuk 'tahapanChart' (Grafik Batang)
-        // Kita ubah dari [1 => 10] menjadi [10] agar dibaca sebagai array oleh Chart.js
         $dataGrafikBatang = [
             'labels' => ['Triwulan 1', 'Triwulan 2', 'Triwulan 3', 'Triwulan 4'],
             'rencana' => array_values($chartPlans),
-            'realisasi' => array_values($chartFinals)
+            'realisasi' => array_values($chartFinals),
+            'tepat_waktu' => array_values($chartTepatWaktu),
+            'terlambat' => array_values($chartTerlambat)
         ];
         
         $dataGrafikPublikasi = [
@@ -128,7 +150,6 @@ class PublicationController extends Controller
             ]
         ];
 
-        // Data untuk ringkasan Donut Chart
         $dataRingSummary = [
             'publikasiSelesai' => $rekapPublikasiTahunan['sudahSelesai'] ?? 0,
             'totalPublikasi' => $rekapPublikasiTahunan['total'] ?? 0,
@@ -136,14 +157,20 @@ class PublicationController extends Controller
             'totalTahapan' => array_sum($dataGrafikBatang['rencana']),
         ];
 
-        // Data untuk 'ringChart' (Grafik Donut)
-        // Kita gunakan data $rekapPublikasiTahunan yang sudah Anda hitung
         $dataGrafikRing = [
             'labels' => ['Publikasi Selesai', 'Tahapan Selesai'],
             'data' => [
-                $dataRingSummary['publikasiSelesai'],  // <-- Data 1
-                $dataRingSummary['tahapanSelesai'], // <-- Data 2
+                $dataRingSummary['publikasiSelesai'],  
+                $dataRingSummary['tahapanSelesai'], 
             ]
+        ];
+
+        $dataGrafikPerTim = [
+            'labels' => array_keys($chartPerTim),
+            'plans' => array_column($chartPerTim, 'plans'),
+            'finals' => array_column($chartPerTim, 'finals'),
+            'tepat_waktu' => array_column($chartPerTim, 'tepat_waktu'),
+            'terlambat' => array_column($chartPerTim, 'terlambat')
         ];
         
         $dataTahapanSummary = [];
@@ -156,7 +183,6 @@ class PublicationController extends Controller
             $f = $realisasiArray[$i];
             $percent = ($r > 0) ? round(($f / $r) * 100) : 0;
 
-            // Tentukan warna berdasarkan persentase
             if ($percent == 100) {
                 $color = 'text-green-600';
             } elseif ($percent >= 67) {
@@ -182,7 +208,8 @@ class PublicationController extends Controller
             'dataGrafikBatang', 
             'dataGrafikRing',
             'dataTahapanSummary', 
-            'dataRingSummary'
+            'dataRingSummary',
+            'dataGrafikPerTim'
         ));
     }
 
@@ -284,29 +311,33 @@ class PublicationController extends Controller
 
     private function getStatistikPerTriwulan($triwulan)
     {
-        // Konversi triwulan yang dipilih menjadi integer
+        $user = auth()->user();
+
         $selectedTriwulan = (int)$triwulan;
 
-        $publications = Publication::with([
+        $query = Publication::with([
             'user',
             'stepsPlans.stepsFinals'
-        ])->get();
+        ]);
 
-        // Inisialisasi penghitung PUBLIKASI
+        if ($user && in_array($user->role, ['ketua_tim', 'operator'])) {
+            $query->where('publication_pic', $user->team);
+        }
+
+        $publications = $query->get();
+
         $totalPublikasi = $publications->count();
         $sudahSelesaiPublikasi = 0;
         $sedangBerlangsungPublikasi = 0;
         
-        // Inisialisasi penghitung TAHAPAN (Kumulatif)
         $totalTahapanKumulatif = 0;
         $selesaiTahapanKumulatif = 0;
         $sedangTahapanKumulatif = 0;
-        $tertundaTahapanKumulatif = 0; // (Tetap hitung untuk data)
+        $tertundaTahapanKumulatif = 0;
         $belumBerlangsungTahapanKumulatif = 0;
 
         foreach ($publications as $publication) {
 
-            // --- Status Publikasi (Kumulatif) ---
             $plansInScope = 0;
             $completedPlansInScope = 0;
             $anyPlanStartedInScope = false;
@@ -314,26 +345,19 @@ class PublicationController extends Controller
             foreach ($publication->stepsPlans as $plan) {
 
                 if (empty($plan->plan_start_date)) {
-                    // Jika tahapan tidak punya tanggal, anggap 'belum berlangsung'
                     $belumBerlangsungTahapanKumulatif++;
                     continue;
                 }
 
-                // Dapatkan triwulan rencana
                 $q = getQuarter($plan->plan_start_date);
 
-                // LOGIKA KUNCI: Cek apakah rencana ini "masuk dalam cakupan"
-                //    (dimulai PADA atau SEBELUM triwulan yang dipilih)
                 if ($q && $q <= $selectedTriwulan) {
-                    // --- Update Status TAHAPAN ---
                     $totalTahapanKumulatif++;
-                    $anyPlanStartedInScope = true; // Tandai bahwa publikasi ini sudah mulai
+                    $anyPlanStartedInScope = true; 
 
                     if ($plan->stepsFinals) {
-                        // Cek triwulan realisasi
                         $fq = getQuarter($plan->stepsFinals->actual_started);
                         
-                        // Jika selesai PADA atau SEBELUM triwulan yang dipilih
                         if ($fq && $fq <= $selectedTriwulan) {
                             $selesaiTahapanKumulatif++;
                             $completedPlansInScope++;
@@ -341,33 +365,25 @@ class PublicationController extends Controller
                                 $tertundaTahapanKumulatif++;
                             }
                         } else {
-                            // Selesai tapi NANTI (misal: pilih Q1, selesai di Q2)
-                            // Maka di Q1 statusnya masih 'sedang berlangsung'
                             $sedangTahapanKumulatif++;
                         }
                     } else {
-                        // Rencana sudah mulai tapi belum selesai
                         $sedangTahapanKumulatif++;
                     }
 
-                    // --- Update Status PUBLIKASI ---
                     $plansInScope++;
                 }
-            } // end loop plans
+            } 
 
-            // Tentukan status PUBLIKASI ini
             if ($anyPlanStartedInScope) {
-                // Jika semua rencana dalam cakupan sudah selesai
                 if ($plansInScope > 0 && $completedPlansInScope === $plansInScope) {
                     $sudahSelesaiPublikasi++;
                 } else {
-                    // Jika ada 1 saja rencana yang mulai, tapi belum semua selesai
                     $sedangBerlangsungPublikasi++;
                 }
             }
-        } // end loop publications
+        }
 
-        // Hitung 'Belum Berlangsung' sebagai sisanya
         $belumBerlangsungPublikasi = $totalPublikasi - $sudahSelesaiPublikasi - $sedangBerlangsungPublikasi;
 
         $persentaseRealisasi = ($totalTahapanKumulatif > 0) 
@@ -383,23 +399,28 @@ class PublicationController extends Controller
             ],
             'tahapan' => [
                 'total' => $totalTahapanKumulatif,
-                'belumBerlangsung' => $belumBerlangsungTahapanKumulatif, // (Opsional)
+                'belumBerlangsung' => $belumBerlangsungTahapanKumulatif, 
                 'sedangBerlangsung' => $sedangTahapanKumulatif,
                 'sudahSelesai' => $selesaiTahapanKumulatif,
-                'tertunda' => $tertundaTahapanKumulatif, // (Opsional)
+                'tertunda' => $tertundaTahapanKumulatif, 
                 'persentaseRealisasi' => $persentaseRealisasi,
             ]
         ]);
     }
 
-    private function getStatistikPublikasiTahunan()
-    {
-        $publications = Publication::with([
+    private function getStatistikPublikasiTahunan($user = null)
+    {  
+        $query = Publication::with([
             'user',
             'stepsPlans.stepsFinals'
-        ])->get();
+        ]);
 
-        // Inisialisasi variabel statistik
+        if ($user && in_array($user->role, ['ketua_tim', 'operator'])) {
+            $query->where('publication_pic', $user->team);
+        }
+
+        $publications = $query->get();
+
         $totalPublikasi = $publications->count();
         $belumBerlangsungPublikasi = 0;
         $sedangBerlangsungPublikasi = 0;
@@ -411,19 +432,16 @@ class PublicationController extends Controller
             $jumlahBelumAdaTanggal = 0;
 
             foreach ($publication->stepsPlans as $plan) {
-                // Jika rencana belum ada tanggal -> dianggap belum berlangsung
                 if (empty($plan->plan_start_date) && empty($plan->plan_end_date)) {
                     $jumlahBelumAdaTanggal++;
                     continue;
                 }
 
-                // Jika tahapan sudah punya hasil (stepsFinals) -> selesai
                 if ($plan->stepsFinals) {
                     $jumlahSelesai++;
                 }
             }
 
-            // Tentukan status publikasi berdasarkan tahapan
             if ($totalTahapan === 0 || $jumlahBelumAdaTanggal === $totalTahapan) {
                 $belumBerlangsungPublikasi++;
             } elseif ($jumlahSelesai === $totalTahapan) {
@@ -443,7 +461,7 @@ class PublicationController extends Controller
 
     public function getRouteKeyName()
     {
-        return 'slug_publication'; // bukan id lagi
+        return 'slug_publication'; 
     }
 
     // Menampilkan detail publikasi dengan semua relasinya
@@ -451,7 +469,8 @@ class PublicationController extends Controller
     {
         $publication = Publication::with([
             'user',
-            'stepsPlans.stepsFinals.struggles'
+            'stepsPlans.stepsFinals.struggles',
+            'files'
         ])->findOrFail($id);
 
         return view('publications.show', compact('publication'));
@@ -470,30 +489,91 @@ class PublicationController extends Controller
             'publication_name'   => 'required|string|max:255|min:3|regex:/^[^<>`]+$/',
             'publication_report' => 'required|string|max:255|min:3|regex:/^[^<>`]+$/',
             'publication_pic'    => 'required|string|max:255|min:3|regex:/^[^<>`]+$/',
-            'publication_report_other' => 'nullable|string|max:255|min:3|regex:/^[^<>`]+$/'
+            'publication_report_other' => 'nullable|string|max:255|min:3|regex:/^[^<>`]+$/',
+            'is_monthly' => 'nullable|boolean',
+            'months' => 'nullable|array',
+            'months.*' => 'integer|between:1,12',
         ],
         [
-        'publication_name.regex' => 'Nama publikasi tidak boleh mengandung karakter aneh seperti <, >, atau `.',
-        'publication_report.regex' => 'Laporan publikasi tidak boleh mengandung karakter aneh seperti <, >, atau `.',
-        'publication_pic.regex' => 'PIC tidak boleh mengandung karakter aneh seperti <, >, atau `.',
-    ]);
+            'publication_name.regex' => 'Nama publikasi tidak boleh mengandung karakter aneh seperti <, >, atau `.',
+            'publication_report.regex' => 'Laporan publikasi tidak boleh mengandung karakter aneh seperti <, >, atau `.',
+            'publication_pic.regex' => 'PIC tidak boleh mengandung karakter aneh seperti <, >, atau `.',
+        ]);
 
-        // Cek kalau user pilih "other"
+        $user = auth()->user();
+    
+        if (in_array($user->role, ['ketua_tim', 'operator'])) {
+            if ($request->publication_pic !== $user->team) {
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', 'Anda tidak memiliki akses untuk membuat publikasi pada tim ini.');
+            }
+        }
+
         $publicationReport = $request->publication_report === 'other'
             ? $request->publication_report_other
             : $request->publication_report;
 
-        Publication::create([
-            'publication_name'   => $request->publication_name,
-            'publication_report' => $publicationReport,
-            'publication_pic'    => $request->publication_pic,
-            'fk_user_id'         => Auth::id(), // ambil user yang login
-        ]);
+        \DB::beginTransaction();
 
-        return redirect()->route('daftarpublikasi')->with('success', 'Publikasi berhasil ditambahkan.');
+        try {
+            if ($request->has('is_monthly') && $request->has('months') && is_array($request->months)) {
+                \Log::info('Creating ' . count($request->months) . ' monthly publications', [
+                    'user' => $user->name,
+                    'team' => $user->team,
+                    'pic' => $request->publication_pic,
+                    'months' => $request->months
+                ]);
+                
+                $this->generateMonthlyPublications(
+                    $request->publication_name,
+                    $publicationReport,
+                    $request->publication_pic,
+                    $request->months
+                );
+                
+                $successMessage = count($request->months) . ' publikasi bulanan berhasil ditambahkan!';
+            } else {
+                \Log::info('Creating single publication', [
+                    'user' => $user->name,
+                    'team' => $user->team,
+                    'pic' => $request->publication_pic,
+                    'name' => $request->publication_name
+                ]);
 
+                \DB::table('publications')->insert([
+                    'publication_name'   => $request->publication_name,
+                    'publication_report' => $publicationReport,
+                    'publication_pic'    => $request->publication_pic,
+                    'fk_user_id'         => Auth::id(),
+                    'is_monthly'         => 0,
+                    'slug_publication'   => \Str::uuid(),
+                    'created_at'         => now(),
+                    'updated_at'         => now(),
+                ]);
+
+                \Log::info('Single publication created successfully');
+                $successMessage = 'Publikasi berhasil ditambahkan!';
+            }
+
+            \DB::commit();
+            
+            return redirect()->route('daftarpublikasi')
+                ->with('success', $successMessage);
+            
+        } catch (\Exception $e) {
+            \DB::rollBack();
+            \Log::error('Error creating publication: ' . $e->getMessage(), [
+                'user' => $user->name,
+                'team' => $user->team,
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Gagal menambahkan publikasi: ' . $e->getMessage());
+        }
     }
-
 
     public function update(Request $request, Publication $publication)
     {        
@@ -510,7 +590,6 @@ class PublicationController extends Controller
         ]
     );
 
-        // Cek kalau user pilih "other"
         $publicationReport = $request->publication_report === 'other'
             ? $request->publication_report_other
             : $request->publication_report;
@@ -529,13 +608,9 @@ class PublicationController extends Controller
     public function destroy(Publication $publication)
     {
         try {
-            // Hapus semua StepsPlan yang terkait
             $publication->stepsPlans()->delete();
-
-            // Hapus publication
             $publication->delete();
 
-            // ✅ PENTING: Cek apakah request AJAX atau redirect biasa
             if (request()->expectsJson() || request()->ajax()) {
                 return response()->json([
                     'success' => true,
@@ -547,7 +622,6 @@ class PublicationController extends Controller
                 ->with('success', 'Publikasi dan semua tahapan terkait berhasil dihapus!');
 
         } catch (\Exception $e) {
-            // Log error untuk debugging
             \Log::error('Error deleting publication: ' . $e->getMessage());
             
             if (request()->expectsJson() || request()->ajax()) {
@@ -562,7 +636,6 @@ class PublicationController extends Controller
         }
     }
 
-
     public function search(Request $request)
     {
         $query = $request->input('query');
@@ -574,16 +647,16 @@ class PublicationController extends Controller
         })
         ->with([
             'user',
-            'stepsPlans.stepsFinals.struggles'
+            'stepsPlans.stepsFinals.struggles',
+            'files'
         ])
         ->get();
 
         foreach ($publications as $publication) {
             $rekapPlans = [1 => 0, 2 => 0, 3 => 0, 4 => 0];
             $rekapFinals = [1 => 0, 2 => 0, 3 => 0, 4 => 0];
-            $lintasTriwulan = [1 => 0, 2 => 0, 3 => 0, 4 => 0]; // ✅ Per triwulan
+            $lintasTriwulan = [1 => 0, 2 => 0, 3 => 0, 4 => 0]; 
             
-            // ✅ Tambahkan array untuk menyimpan list
             $listPlans = [1 => [], 2 => [], 3 => [], 4 => []];
             $listFinals = [1 => [], 2 => [], 3 => [], 4 => []];
             $listLintas = [1 => [], 2 => [], 3 => [], 4 => []];
@@ -592,19 +665,18 @@ class PublicationController extends Controller
                 $q = getQuarter($plan->plan_start_date);
                 if ($q) {
                     $rekapPlans[$q]++;
-                    $listPlans[$q][] = $plan->plan_name; // ✅ Simpan nama rencana
+                    $listPlans[$q][] = $plan->plan_name; 
                 }
 
                 if ($plan->stepsFinals) {
                     $fq = getQuarter($plan->stepsFinals->actual_started);
                     if ($fq) {
                         $rekapFinals[$fq]++;
-                        $listFinals[$fq][] = $plan->plan_name; // ✅ Simpan nama realisasi
+                        $listFinals[$fq][] = $plan->plan_name;
                     }
 
-                    // ✅ Cek lintas triwulan
                     if ($fq && $q && $fq != $q) {
-                        $lintasTriwulan[$fq]++; // ✅ Hitung per triwulan realisasi
+                        $lintasTriwulan[$fq]++; 
                         $listLintas[$fq][] = [
                             'plan_name' => $plan->plan_name,
                             'from_quarter' => "Triwulan $q",
@@ -630,14 +702,11 @@ class PublicationController extends Controller
             $publication->lintasTriwulan = $lintasTriwulan;
             $publication->progressKumulatif = $progressKumulatif;
             $publication->progressTriwulan = $progressTriwulan;
-            
-            // ✅ Set data list
             $publication->listPlans = $listPlans;
             $publication->listFinals = $listFinals;
             $publication->listLintas = $listLintas;
         }
 
-        // ✅ Return dengan data lengkap
         return response()->json($publications->map(function($pub) {
             return [
                 'slug_publication' => $pub->slug_publication,
@@ -646,13 +715,246 @@ class PublicationController extends Controller
                 'publication_pic' => $pub->publication_pic,
                 'rekapPlans' => $pub->rekapPlans,
                 'rekapFinals' => $pub->rekapFinals,
-                'lintasTriwulan' => $pub->lintasTriwulan, // ✅ Array per triwulan
+                'lintasTriwulan' => $pub->lintasTriwulan,
                 'progressKumulatif' => $pub->progressKumulatif,
                 'progressTriwulan' => $pub->progressTriwulan,
-                'listPlans' => $pub->listPlans,     // ✅ Tambahkan
-                'listFinals' => $pub->listFinals,   // ✅ Tambahkan
-                'listLintas' => $pub->listLintas,   // ✅ Tambahkan
+                'listPlans' => $pub->listPlans,     
+                'listFinals' => $pub->listFinals,   
+                'listLintas' => $pub->listLintas,   
+                'filesCount' => $pub->files->count(), 
+                'filesList' => $pub->files->pluck('file_name')->toArray(),
             ];
         }));
+    }
+
+    public function uploadFiles(Request $request, Publication $publication)
+    {
+        $request->validate([
+            'files' => 'required|array|max:10',
+            'files.*' => 'required|file|mimes:pdf,xlsx,xls,docx,doc,zip|max:10240',
+        ], [
+            'files.required' => 'Pilih minimal 1 file untuk diupload',
+            'files.*.mimes' => 'File harus berformat: PDF, Excel, Word, atau ZIP',
+            'files.*.max' => 'Ukuran file maksimal 10MB',
+        ]);
+
+        try {
+            $uploadedCount = 0;
+
+            foreach ($request->file('files') as $file) {
+                $originalName = $file->getClientOriginalName();
+                $extension = $file->getClientOriginalExtension();
+                $fileSize = $file->getSize();
+                $fileName = time() . '_' . uniqid() . '_' . $originalName;
+
+                $filePath = $file->storeAs(
+                    'publications/' . $publication->slug_publication,
+                    $fileName,
+                    'public'
+                );
+
+                // Simpan ke database
+                PublicationFile::create([
+                    'publication_id' => $publication->publication_id,
+                    'file_name' => $originalName, 
+                    'file_path' => $filePath,
+                    'file_type' => $extension,
+                    'file_size' => $fileSize,
+                ]);
+
+                $uploadedCount++;
+            }
+
+            return redirect()->back()
+                ->with('success', "Berhasil mengupload {$uploadedCount} file publikasi!");
+
+        } catch (\Exception $e) {
+            \Log::error('Error uploading files: ' . $e->getMessage());
+            return redirect()->back()
+                ->with('error', 'Gagal mengupload file: ' . $e->getMessage());
+        }
+    }
+
+    // Hapus file publikasi
+    public function deleteFile(PublicationFile $file)
+    {
+        try {
+            if (Storage::disk('public')->exists($file->file_path)) {
+                Storage::disk('public')->delete($file->file_path);
+            }
+
+            $file->delete();
+
+            if (request()->expectsJson() || request()->ajax()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'File berhasil dihapus!'
+                ]);
+            }
+
+            return redirect()->back()
+                ->with('success', 'File berhasil dihapus!');
+
+        } catch (\Exception $e) {
+            \Log::error('Error deleting file: ' . $e->getMessage());
+            
+            if (request()->expectsJson() || request()->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Gagal menghapus file: ' . $e->getMessage()
+                ], 500);
+            }
+
+            return redirect()->back()
+                ->with('error', 'Gagal menghapus file');
+        }
+    }
+
+    // Download file publikasi
+    public function downloadFile(PublicationFile $file)
+    {
+        try {
+            $filePath = storage_path('app/public/' . $file->file_path);
+
+            if (!file_exists($filePath)) {
+                abort(404, 'File tidak ditemukan');
+            }
+
+            return response()->download($filePath, $file->file_name);
+
+        } catch (\Exception $e) {
+            \Log::error('Error downloading file: ' . $e->getMessage());
+            return redirect()->back()
+                ->with('error', 'Gagal mengunduh file');
+        }
+    }
+
+    // Download semua file publikasi dalam 1 ZIP
+    public function downloadAllFiles(Publication $publication)
+    {
+        try {
+            $files = $publication->files;
+
+            if ($files->isEmpty()) {
+                return redirect()->back()
+                    ->with('error', 'Tidak ada file untuk diunduh');
+            }
+
+            $zipFileName = 'Publikasi_' . Str::slug($publication->publication_name) . '_' . time() . '.zip';
+            $zipPath = storage_path('app/temp/' . $zipFileName);
+
+            if (!file_exists(storage_path('app/temp'))) {
+                mkdir(storage_path('app/temp'), 0755, true);
+            }
+
+            $zip = new \ZipArchive();
+            if ($zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
+                throw new \Exception('Gagal membuat file ZIP');
+            }
+
+            foreach ($files as $file) {
+                $filePath = storage_path('app/public/' . $file->file_path);
+                if (file_exists($filePath)) {
+                    $zip->addFile($filePath, $file->file_name);
+                }
+            }
+
+            $zip->close();
+
+            return response()->download($zipPath, $zipFileName)->deleteFileAfterSend(true);
+
+        } catch (\Exception $e) {
+            \Log::error('Error creating ZIP: ' . $e->getMessage());
+            return redirect()->back()
+                ->with('error', 'Gagal membuat file ZIP: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * @param string $baseName - Nama kegiatan dasar (misal: "Inflasi")
+     * @param string $report - Nama laporan
+     * @param string $pic - Tim PIC
+     * @param array $months - Array bulan yang dipilih (1-12)
+     * @return void
+     */
+    
+    private function generateMonthlyPublications($baseName, $report, $pic, array $months)
+    {
+        $currentYear = now()->year;
+        
+        foreach ($months as $monthNumber) {
+            $monthNumber = (int)$monthNumber;
+            $targetDate = \Carbon\Carbon::create($currentYear, $monthNumber, 1);
+            
+            $year = $targetDate->year;
+            $month = $targetDate->month;
+            $monthName = $this->getMonthName($month);
+            
+            $publicationName = $baseName . ' - ' . $monthName . ' ' . $year;
+            $startDate = $targetDate->copy()->startOfMonth()->format('Y-m-d');
+            $endDate = $targetDate->copy()->endOfMonth()->format('Y-m-d');
+            
+            // Insert publikasi baru
+            $publicationId = \DB::table('publications')->insertGetId([
+                'publication_name'   => $publicationName,
+                'publication_report' => $report,
+                'publication_pic'    => $pic,
+                'fk_user_id'         => Auth::id(),
+                'is_monthly'         => 1,
+                'slug_publication'   => \Str::uuid(),
+                'created_at'         => now(),
+                'updated_at'         => now(),
+            ]);
+            
+            \Log::info("Monthly publication created: $publicationName (ID: $publicationId)");
+            
+            $this->createDefaultStep($publicationId, $baseName, $monthName, $year, $startDate, $endDate);
+        }
+    }
+
+
+    /**
+     * 📋 Buat 1 tahapan default untuk publikasi bulanan
+     * @param int $publicationId
+     * @param string $baseName
+     * @param string $monthName
+     * @param int $year
+     * @param string $startDate
+     * @param string $endDate
+     * @return void
+     */
+    private function createDefaultStep($publicationId, $baseName, $monthName, $year, $startDate, $endDate)
+    {
+        $planName = "Kegiatan " . $baseName . ' - ' . $monthName . ' ' . $year;
+        
+        \DB::table('steps_plans')->insert([
+            'publication_id'    => $publicationId,
+            'plan_type'         => 'monthly',
+            'plan_name'         => $planName,
+            'plan_start_date'   => $startDate,
+            'plan_end_date'     => $endDate,
+            'plan_desc'         => 'Tahapan kegiatan ' . $baseName . ' bulan ' . $monthName . ' ' . $year,
+            'created_at'        => now(),
+            'updated_at'        => now(),
+        ]);
+        
+        \Log::info("Default step created for publication ID $publicationId: $planName");
+    }
+
+    /**
+     * 📅 Get nama bulan dalam Bahasa Indonesia
+     * @param int $monthNumber
+     * @return string
+     */
+    private function getMonthName($monthNumber)
+    {
+        $months = [
+            1 => 'Januari', 2 => 'Februari', 3 => 'Maret',
+            4 => 'April', 5 => 'Mei', 6 => 'Juni',
+            7 => 'Juli', 8 => 'Agustus', 9 => 'September',
+            10 => 'Oktober', 11 => 'November', 12 => 'Desember'
+        ];
+        
+        return $months[$monthNumber] ?? 'Unknown';
     }
 }
